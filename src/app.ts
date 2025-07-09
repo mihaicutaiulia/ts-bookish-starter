@@ -1,5 +1,5 @@
 import express from 'express';
-import { Connection, ConnectionConfiguration, Request } from 'tedious';
+import { Connection, Request } from 'tedious';
 import 'dotenv/config';
 import { Book } from './entity/book';
 
@@ -26,51 +26,11 @@ app.listen(port, () => {
 app.use('/healthcheck', healthcheckRoutes);
 app.use('/books', bookRoutes);
 
-// const config: ConnectionConfiguration = {
-//     server: 'localhost',
-//     options: {
-//         trustServerCertificate: true,
-//     },
-//     authentication: {
-//         type: 'default',
-//         options: {
-//             userName: 'user',
-//             password: 'pass',
-//         },
-//     },
-// };
-//
-// const connection = new Connection(config);
-//
-// connection.on('connect', (err) => {
-//     if (err) {
-//         console.error('Connection failed:', err);
-//     } else {
-//         console.log('Connected to the database successfully.');
-//     }
-// });
-//
-// connection.connect();
-
 const poolConfig = {
-    min: 2,
-    max: 4,
+    min: 3,
+    max: 5,
     log: true,
 };
-
-// const connectionConfig: ConnectionConfiguration = {
-//     server: 'localhost',
-//     options: {
-//         trustServerCertificate: true,
-//     },
-//     authentication: {
-//         type: 'default',
-//         options: {
-//             userName: 'user',
-//             password: 'pass',
-//         },
-//     },
-// };
 
 const connectionConfig = {
     userName: 'user',

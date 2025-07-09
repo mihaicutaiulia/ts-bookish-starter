@@ -1,78 +1,90 @@
 import { Router, Request, Response } from 'express';
-import { connection } from '../app';
+import { pool } from '../app';
 import { Book } from '../entity/book';
-import { Request as TediousRequest, TYPES } from 'tedious';
+import { Request as TediousRequest, TYPES, Connection } from 'tedious';
 
 class BookController {
     router: Router;
 
     constructor() {
         this.router = Router();
-        this.router.get('/:id', this.getBook.bind(this));
-        this.router.post('/', this.createBook.bind(this));
-    }
-
-    getBook(req: Request, res: Response) {
-        const bookId = req.params.id;
-        const query = 'SELECT * FROM books WHERE id = @id';
-
-        const request = new TediousRequest(query, (err) => {
-            if (err) {
-                return res.status(500).json({
-                    error: 'server_error',
-                    error_description: 'Database query failed.',
-                });
-            }
-        });
-
-        request.addParameter('id', TYPES.Int, bookId);
-
-        request.on('row', (columns) => {
-            const book = new Book(
-                columns[0].value,
-                columns[1].value,
-                columns[2].value,
-                columns[3].value,
-            );
-            return res.status(200).json(book);
-        });
-
-        connection.execSql(request);
-    }
-
-    async createBook(req: Request, res: Response) {
-        const { title, isbn, nr_copies, author_first, author_last } = req.body;
-
-        if (!title || !isbn || !nr_copies || !author_first || !author_last) {
-            return this.handleError(
-                'invalid_request',
-                'Missing required fields: title, isbn, nr_copies, or author.',
-                res,
-            );
-        }
-
-        try {
-            const bookId = await this.insertBook(req);
-            const authorId = await this.insertAuthor(req);
-
-            await this.createBookAuthorRelation(bookId, authorId);
-
-            return res.status(201).json({ id: bookId });
-        } catch (err: any) {
-            return this.handleError('server_error', err.message, res);
-        }
-    }
-
-    handleError(message: string, description: string, res: Response) {
-        if (!res.headersSent) {
-            return res.status(400).json({
-                error: message,
-                error_description: description,
+        this.router.get('/:id', (req, res) => {
+            pool.acquire((err, connection) => {
+                if (err) {
+                    res.status(500).json({ error: err.message });
+                    return;
+                }
+                this.getBook(req, res, connection)
+                    .then((books) => res.json(books))
+                    .catch((err) =>
+                        res.status(500).json({ error: err.message }),
+                    )
+                    .finally(() => connection.release());
             });
-        }
+        });
+
+        this.router.post('/', (req, res) => {
+            pool.acquire(async (err, connection) => {
+                if (err) {
+                    res.status(500).json({ error: err.message });
+                    return;
+                }
+                try {
+                    const bookId = await this.insertBook(req, connection);
+                    const authorId = await this.insertAuthor(req, connection);
+                    await this.createBookAuthorRelation(
+                        bookId,
+                        authorId,
+                        connection,
+                    );
+                    res.status(201).json({ id: bookId });
+                } catch (err: any) {
+                    this.handleError('server_error', err.message, res);
+                } finally {
+                    connection.release();
+                }
+            });
+        });
     }
 
-    insertBook(req: Request): Promise<number> {
+    getBook(
+        req: Request,
+        res: Response,
+        connection: Connection,
+    ): Promise<Book[]> {
+        return new Promise((resolve, reject) => {
+            const bookId = req.params.id;
+            let book;
+            const query = 'SELECT * FROM books WHERE id = @id';
+
+            const request = new TediousRequest(query, (err) => {
+                if (err) {
+                    return res.status(500).json({
+                        error: 'server_error',
+                        error_description: 'Database query failed.',
+                    });
+                }
+            });
+
+            request.addParameter('id', TYPES.Int, bookId);
+
+            request.on('row', (columns) => {
+                book = new Book(
+                    columns[0].value,
+                    columns[1].value,
+                    columns[2].value,
+                    columns[3].value,
+                );
+            });
+
+            request.on('requestCompleted', () => resolve(book));
+            request.on('error', (err) => reject(err));
+
+            connection.execSql(request);
+        });
+    }
+
+    insertBook(req: Request, connection: Connection): Promise<number> {
         const { title, isbn, nr_copies } = req.body;
         const query =
             'INSERT INTO books (title, isbn, total_copies) OUTPUT INSERTED.id VALUES (@title, @isbn, @nr_copies)';
@@ -94,7 +106,7 @@ class BookController {
         });
     }
 
-    insertAuthor(req: Request): Promise<number> {
+    insertAuthor(req: Request, connection: Connection): Promise<number> {
         const { author_first, author_last } = req.body;
         const checkQuery =
             'SELECT id FROM authors WHERE first_name = @first_name AND last_name = @last_name';
@@ -149,9 +161,13 @@ class BookController {
         });
     }
 
-    createBookAuthorRelation(bookId: number, authorId: number): Promise<void> {
+    createBookAuthorRelation(
+        bookId: number,
+        authorId: number,
+        connection: Connection,
+    ): Promise<void> {
         const query =
-            'INSERT INTO BookAuthors (book_id, author_id) VALUES (@bookId, @authId)';
+            'INSERT INTO BooksAuthors (book_id, author_id) VALUES (@bookId, @authId)';
 
         return new Promise((resolve, reject) => {
             const request = new TediousRequest(query, (err) => {
@@ -164,6 +180,15 @@ class BookController {
 
             connection.execSql(request);
         });
+    }
+
+    handleError(message: string, description: string, res: Response) {
+        if (!res.headersSent) {
+            return res.status(400).json({
+                error: message,
+                error_description: description,
+            });
+        }
     }
 }
 
