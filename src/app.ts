@@ -3,10 +3,13 @@ import { Connection, ConnectionConfiguration, Request } from 'tedious';
 import 'dotenv/config';
 import { Book } from './entity/book';
 
+import { ConnectionPool } from 'tedious-connection-pool';
+
 import healthcheckRoutes from './controllers/healthcheckController';
 import bookRoutes from './controllers/bookController';
 
-export { connection };
+// export { connection };
+export { pool };
 
 const port = process.env['PORT'] || 3000;
 
@@ -23,39 +26,78 @@ app.listen(port, () => {
 app.use('/healthcheck', healthcheckRoutes);
 app.use('/books', bookRoutes);
 
-const config: ConnectionConfiguration = {
-    server: 'localhost',
-    options: {
-        trustServerCertificate: true,
-    },
-    authentication: {
-        type: 'default',
-        options: {
-            userName: 'user',
-            password: 'pass',
-        },
-    },
+// const config: ConnectionConfiguration = {
+//     server: 'localhost',
+//     options: {
+//         trustServerCertificate: true,
+//     },
+//     authentication: {
+//         type: 'default',
+//         options: {
+//             userName: 'user',
+//             password: 'pass',
+//         },
+//     },
+// };
+//
+// const connection = new Connection(config);
+//
+// connection.on('connect', (err) => {
+//     if (err) {
+//         console.error('Connection failed:', err);
+//     } else {
+//         console.log('Connected to the database successfully.');
+//     }
+// });
+//
+// connection.connect();
+
+const poolConfig = {
+    min: 2,
+    max: 4,
+    log: true,
 };
 
-const connection = new Connection(config);
+// const connectionConfig: ConnectionConfiguration = {
+//     server: 'localhost',
+//     options: {
+//         trustServerCertificate: true,
+//     },
+//     authentication: {
+//         type: 'default',
+//         options: {
+//             userName: 'user',
+//             password: 'pass',
+//         },
+//     },
+// };
 
-connection.on('connect', (err) => {
-    if (err) {
-        console.error('Connection failed:', err);
-    } else {
-        console.log('Connected to the database successfully.');
-    }
+const connectionConfig = {
+    userName: 'user',
+    password: 'pass',
+    server: 'localhost',
+    trustServerCertificate: true,
+};
+
+//create the pool
+const ConnectionPool = require('tedious-connection-pool');
+const pool = new ConnectionPool(poolConfig, connectionConfig);
+
+pool.on('error', function (err) {
+    console.error(err);
 });
 
-connection.connect();
-
-app.get('/', async (req, res) => {
-    try {
-        const books = await getAllBooks(connection);
-        res.json(books);
-    } catch (err) {
-        res.status(500).json({ error: err });
-    }
+app.get('/', (req, res) => {
+    pool.acquire((err, connection) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        getAllBooks(connection)
+            .then((books) => res.json(books))
+            .catch((err) => res.status(500).json({ error: err.message }))
+            .finally(() => connection.release());
+    });
 });
 
 function getAllBooks(connection: Connection): Promise<Book[]> {
