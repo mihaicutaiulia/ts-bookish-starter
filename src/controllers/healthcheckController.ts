@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { Request as TediousRequest, TYPES } from 'tedious';
+import { connection } from '../app';
 
 class HealthCheckController {
     router: Router;
