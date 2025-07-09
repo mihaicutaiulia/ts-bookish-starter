@@ -55,7 +55,9 @@ class BookController {
         return new Promise((resolve, reject) => {
             const bookId = req.params.id;
             let book;
-            const query = 'SELECT * FROM books WHERE id = @id';
+            // const query = 'SELECT * FROM books WHERE id = @id';
+            const query =
+                'SELECT b.id AS book_id, b.title, b.isbn, b.total_copies, a.last_name, a.first_name FROM Books b LEFT JOIN BooksAuthors ba ON b.id = ba.book_id LEFT JOIN Authors a ON ba.author_id = a.id WHERE b.id = @id';
 
             const request = new TediousRequest(query, (err) => {
                 if (err) {
@@ -69,11 +71,14 @@ class BookController {
             request.addParameter('id', TYPES.Int, bookId);
 
             request.on('row', (columns) => {
+                const author: string =
+                    columns[4].value + ' ' + columns[5].value;
                 book = new Book(
                     columns[0].value,
                     columns[1].value,
                     columns[2].value,
                     columns[3].value,
+                    author,
                 );
             });
 

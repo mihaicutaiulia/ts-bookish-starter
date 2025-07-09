@@ -7,6 +7,7 @@ import { ConnectionPool } from 'tedious-connection-pool';
 
 import healthcheckRoutes from './controllers/healthcheckController';
 import bookRoutes from './controllers/bookController';
+import userRoutes from './controllers/userController';
 
 // export { connection };
 export { pool };
@@ -25,6 +26,7 @@ app.listen(port, () => {
  */
 app.use('/healthcheck', healthcheckRoutes);
 app.use('/books', bookRoutes);
+app.use('/user', userRoutes);
 
 const poolConfig = {
     min: 3,
@@ -63,18 +65,23 @@ app.get('/', (req, res) => {
 function getAllBooks(connection: Connection): Promise<Book[]> {
     return new Promise((resolve, reject) => {
         const books: Book[] = [];
-        const sql = 'SELECT id, title, isbn, total_copies FROM Books';
+        // const sql = 'SELECT id, title, isbn, total_copies FROM Books';
+        const sql =
+            'SELECT b.id AS book_id, b.title, b.isbn, b.total_copies, a.last_name, a.first_name FROM Books b LEFT JOIN BooksAuthors ba ON b.id = ba.book_id LEFT JOIN Authors a ON ba.author_id = a.id';
 
         const request = new Request(sql, (err) => {
             if (err) reject(err);
         });
 
         request.on('row', (columns) => {
+            const author: string =
+                columns[4].value + ' ' + columns[5].value;
             const book = new Book(
                 columns[0].value,
                 columns[1].value,
                 columns[2].value,
                 columns[3].value,
+                author,
             );
             books.push(book);
         });
