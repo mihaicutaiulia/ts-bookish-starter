@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { pool } from '../app';
 import { Request as TediousRequest, TYPES, Connection } from 'tedious';
+import { Book } from '../entity/book';
+import { BorrowedBook } from '../entity/borrowedBook';
 
 class UserController {
     router: Router;
@@ -28,8 +30,23 @@ class UserController {
                 }
             });
         });
-        this.router.get('/myBooks', (req, res) => {
-            res.status(200).json({ message: 'User endpoint is working' });
+        this.router.get('/myBooks/:id', (req, res) => {
+            pool.acquire(async (err, connection) => {
+                if (err) {
+                    res.status(500).json({ error: err.message });
+                    return;
+                }
+                try {
+                    const userId = req.params.id;
+                    const books: BorrowedBook[] =
+                        await this.getBorrowedBooksByUserId(userId, connection);
+                    res.status(201).json(books);
+                } catch (err: any) {
+                    res.status(500).json({ error: err.message });
+                } finally {
+                    connection.release();
+                }
+            });
         });
     }
 
@@ -37,8 +54,12 @@ class UserController {
         return new Promise((resolve, reject) => {
             let bookId: number;
             // const query = 'SELECT * FROM books WHERE id = @id';
-            const query =
-                'SELECT b.id AS book_id, b.title, b.isbn, b.total_copies, a.last_name, a.first_name FROM Books b LEFT JOIN BooksAuthors ba ON b.id = ba.book_id LEFT JOIN Authors a ON ba.author_id = a.id WHERE b.title = @title';
+            const query = `SELECT b.id AS book_id, b.title, b.isbn,
+                                                        b.total_copies, a.last_name, a.first_name
+                                                    FROM Books b
+                                                    LEFT JOIN BooksAuthors ba ON b.id = ba.book_id
+                                                    LEFT JOIN Authors a ON ba.author_id = a.id
+                                                    WHERE b.title = @title`;
 
             const request = new TediousRequest(query, (err) => {
                 if (err) return reject(err);
@@ -68,8 +89,9 @@ class UserController {
             const due_date = new Date(borrowed_at);
             due_date.setDate(due_date.getDate() + 10);
 
-            const query =
-                'INSERT INTO BorrowedBooks (book_id, user_id, borrowed_at, due_date) OUTPUT INSERTED.id VALUES (@bookId, @userId, @borrowed_at, @due_date)';
+            const query = `INSERT INTO BorrowedBooks (book_id, user_id, borrowed_at, due_date)
+                                                OUTPUT INSERTED.id
+                                                VALUES (@bookId, @userId, @borrowed_at, @due_date) `;
             const request = new TediousRequest(query, (err) => {
                 if (err) return reject(err);
             });
@@ -82,6 +104,49 @@ class UserController {
             request.on('row', (columns) => {
                 resolve(columns[0].value);
             });
+
+            connection.execSql(request);
+        });
+    }
+
+    getBorrowedBooksByUserId(
+        userId: string,
+        connection: Connection,
+    ): Promise<BorrowedBook[]> {
+        return new Promise((resolve, reject) => {
+            const books: BorrowedBook[] = [];
+            // const query = 'SELECT * FROM books WHERE id = @id';
+            const query = `SELECT b.id AS book_id, b.title, b.isbn, b.total_copies,
+                                                        a.last_name, a.first_name, bb.borrowed_at, bb.due_date
+                                                    FROM BorrowedBooks bb
+                                                    JOIN Books b ON bb.book_id = b.id
+                                                    LEFT JOIN BooksAuthors ba ON b.id = ba.book_id
+                                                    LEFT JOIN Authors a ON ba.author_id = a.id
+                                                    WHERE bb.user_id = @userId`;
+
+            const request = new TediousRequest(query, (err) => {
+                if (err) return reject(err);
+            });
+
+            request.addParameter('userId', TYPES.Int, userId);
+
+            request.on('row', (columns) => {
+                const author: string =
+                    columns[4].value + ' ' + columns[5].value;
+                const book = new BorrowedBook(
+                    columns[0].value,
+                    columns[1].value,
+                    columns[2].value,
+                    columns[3].value,
+                    author,
+                    columns[6].value,
+                    columns[7].value,
+                );
+                books.push(book);
+            });
+
+            request.on('requestCompleted', () => resolve(books));
+            request.on('error', (err) => reject(err));
 
             connection.execSql(request);
         });

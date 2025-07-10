@@ -56,8 +56,12 @@ class BookController {
             const bookId = req.params.id;
             let book;
             // const query = 'SELECT * FROM books WHERE id = @id';
-            const query =
-                'SELECT b.id AS book_id, b.title, b.isbn, b.total_copies, a.last_name, a.first_name FROM Books b LEFT JOIN BooksAuthors ba ON b.id = ba.book_id LEFT JOIN Authors a ON ba.author_id = a.id WHERE b.id = @id';
+            const query = `SELECT b.id AS book_id, b.title, b.isbn,
+                                                        b.total_copies, a.last_name, a.first_name
+                                                    FROM Books b
+                                                    LEFT JOIN BooksAuthors ba ON b.id = ba.book_id
+                                                    LEFT JOIN Authors a ON ba.author_id = a.id
+                                                    WHERE b.id = @id`;
 
             const request = new TediousRequest(query, (err) => {
                 if (err) {
@@ -91,8 +95,9 @@ class BookController {
 
     insertBook(req: Request, connection: Connection): Promise<number> {
         const { title, isbn, nr_copies } = req.body;
-        const query =
-            'INSERT INTO books (title, isbn, total_copies) OUTPUT INSERTED.id VALUES (@title, @isbn, @nr_copies)';
+        const query = `INSERT INTO books (title, isbn, total_copies)
+                                                OUTPUT INSERTED.id
+                                                VALUES (@title, @isbn, @nr_copies)`;
 
         return new Promise((resolve, reject) => {
             const request = new TediousRequest(query, (err) => {
@@ -113,8 +118,9 @@ class BookController {
 
     insertAuthor(req: Request, connection: Connection): Promise<number> {
         const { author_first, author_last } = req.body;
-        const checkQuery =
-            'SELECT id FROM authors WHERE first_name = @first_name AND last_name = @last_name';
+        const checkQuery = `SELECT id
+                                                FROM authors
+                                                WHERE first_name = @first_name AND last_name = @last_name`;
 
         return new Promise((resolve, reject) => {
             const checkRequest = new TediousRequest(checkQuery, (err) => {
@@ -134,8 +140,9 @@ class BookController {
             checkRequest.on('requestCompleted', () => {
                 if (!found) {
                     // Insert new author
-                    const insertQuery =
-                        'INSERT INTO authors (first_name, last_name) OUTPUT INSERTED.id VALUES (@first_name, @last_name)';
+                    const insertQuery = `INSERT INTO authors (first_name, last_name)
+                                                                    OUTPUT INSERTED.id
+                                                                    VALUES (@first_name, @last_name)`;
                     const insertRequest = new TediousRequest(
                         insertQuery,
                         (err) => {
