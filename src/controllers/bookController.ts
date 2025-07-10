@@ -3,18 +3,59 @@ import { pool } from '../app';
 import { Book } from '../entity/book';
 import { Request as TediousRequest, TYPES, Connection } from 'tedious';
 
+enum BookQueryType {
+    ID = 'b.id',
+    TITLE = 'b.title',
+    AUTHOR = 'a.last_name',
+}
+
 class BookController {
     router: Router;
 
     constructor() {
         this.router = Router();
-        this.router.get('/:id', (req, res) => {
+
+        this.router.get('/id/:id', (req, res) => {
             pool.acquire((err, connection) => {
                 if (err) {
                     res.status(500).json({ error: err.message });
                     return;
                 }
-                this.getBook(req, res, connection)
+                this.getBooks(req.params.id, BookQueryType.ID, connection)
+                    .then((books) => res.json(books))
+                    .catch((err) =>
+                        res.status(500).json({ error: err.message }),
+                    )
+                    .finally(() => connection.release());
+            });
+        });
+
+        this.router.get('/title/:title', (req, res) => {
+            pool.acquire((err, connection) => {
+                if (err) {
+                    res.status(500).json({ error: err.message });
+                    return;
+                }
+                this.getBooks(req.params.title, BookQueryType.TITLE, connection)
+                    .then((books) => res.json(books))
+                    .catch((err) =>
+                        res.status(500).json({ error: err.message }),
+                    )
+                    .finally(() => connection.release());
+            });
+        });
+
+        this.router.get('/author/:author', (req, res) => {
+            pool.acquire((err, connection) => {
+                if (err) {
+                    res.status(500).json({ error: err.message });
+                    return;
+                }
+                this.getBooks(
+                    req.params.author,
+                    BookQueryType.AUTHOR,
+                    connection,
+                )
                     .then((books) => res.json(books))
                     .catch((err) =>
                         res.status(500).json({ error: err.message }),
@@ -47,46 +88,45 @@ class BookController {
         });
     }
 
-    getBook(
-        req: Request,
-        res: Response,
+    getBooks(
+        id: string,
+        type: BookQueryType,
         connection: Connection,
     ): Promise<Book[]> {
         return new Promise((resolve, reject) => {
-            const bookId = req.params.id;
-            let book;
+            const books: Book[] = [];
             // const query = 'SELECT * FROM books WHERE id = @id';
             const query = `SELECT b.id AS book_id, b.title, b.isbn,
                                                         b.total_copies, a.last_name, a.first_name
                                                     FROM Books b
                                                     LEFT JOIN BooksAuthors ba ON b.id = ba.book_id
                                                     LEFT JOIN Authors a ON ba.author_id = a.id
-                                                    WHERE b.id = @id`;
+                                                    WHERE ${type} = @id`;
 
             const request = new TediousRequest(query, (err) => {
-                if (err) {
-                    return res.status(500).json({
-                        error: 'server_error',
-                        error_description: 'Database query failed.',
-                    });
-                }
+                if (err) return reject(err);
             });
 
-            request.addParameter('id', TYPES.Int, bookId);
+            if (type === BookQueryType.ID) {
+                request.addParameter('id', TYPES.Int, id);
+            } else {
+                request.addParameter('id', TYPES.NVarChar, id);
+            }
 
             request.on('row', (columns) => {
                 const author: string =
                     columns[4].value + ' ' + columns[5].value;
-                book = new Book(
+                const book = new Book(
                     columns[0].value,
                     columns[1].value,
                     columns[2].value,
                     columns[3].value,
                     author,
                 );
+                books.push(book);
             });
 
-            request.on('requestCompleted', () => resolve(book));
+            request.on('requestCompleted', () => resolve(books));
             request.on('error', (err) => reject(err));
 
             connection.execSql(request);
@@ -127,7 +167,11 @@ class BookController {
                 if (err) return reject(err);
             });
 
-            checkRequest.addParameter('first_name', TYPES.NVarChar, author_first);
+            checkRequest.addParameter(
+                'first_name',
+                TYPES.NVarChar,
+                author_first,
+            );
             checkRequest.addParameter('last_name', TYPES.NVarChar, author_last);
 
             let found = false;
