@@ -3,7 +3,9 @@ import { pool } from '../app';
 import { Book } from '../entity/book';
 import { Request as TediousRequest, TYPES, Connection } from 'tedious';
 
-enum BookQueryType {
+import { updateInventory, updateInventoryTable } from '../middleware/inventory';
+
+export enum BookQueryType {
     ID = 'b.id',
     TITLE = 'b.title',
     AUTHOR = 'a.last_name',
@@ -64,7 +66,7 @@ class BookController {
             });
         });
 
-        this.router.post('/', (req, res) => {
+        this.router.post('/add', (req, res) => {
             pool.acquire(async (err, connection) => {
                 if (err) {
                     res.status(500).json({ error: err.message });
@@ -78,7 +80,35 @@ class BookController {
                         authorId,
                         connection,
                     );
+
+                    await updateInventoryTable(
+                        bookId,
+                        req.body.nr_copies,
+                        connection,
+                    );
+
                     res.status(201).json({ id: bookId });
+                } catch (err: any) {
+                    this.handleError('server_error', err.message, res);
+                } finally {
+                    connection.release();
+                }
+            });
+        });
+
+        this.router.post('/updateInventory', (req, res) => {
+            pool.acquire(async (err, connection) => {
+                if (err) {
+                    res.status(500).json({ error: err.message });
+                    return;
+                }
+                try {
+                    const { title, nr_copies } = req.body;
+                    const bookId = await this.getBookId(title, connection);
+
+                    await updateInventory(bookId, nr_copies, connection);
+
+                    res.status(200).json({ message: 'Inventory updated' });
                 } catch (err: any) {
                     this.handleError('server_error', err.message, res);
                 } finally {
@@ -233,6 +263,30 @@ class BookController {
 
             request.addParameter('bookId', TYPES.Int, bookId);
             request.addParameter('authId', TYPES.Int, authorId);
+
+            connection.execSql(request);
+        });
+    }
+
+    getBookId(title: string, connection: Connection): Promise<number> {
+        return new Promise((resolve, reject) => {
+            let bookId = -1;
+            const query = `SELECT b.id AS book_id
+                                                FROM Books b
+                                                WHERE b.title = @title`;
+
+            const request = new TediousRequest(query, (err) => {
+                if (err) return reject(err);
+            });
+
+            request.addParameter('title', TYPES.NVarChar, title);
+
+            request.on('row', (columns) => {
+                bookId = columns[0].value;
+            });
+
+            request.on('requestCompleted', () => resolve(bookId));
+            request.on('error', (err) => reject(err));
 
             connection.execSql(request);
         });
