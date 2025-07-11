@@ -8,6 +8,7 @@ import { ConnectionPool } from 'tedious-connection-pool';
 import healthcheckRoutes from './controllers/healthcheckController';
 import bookRoutes from './controllers/bookController';
 import userRoutes from './controllers/userController';
+import adminRoutes from './controllers/adminController';
 
 // export { connection };
 export { pool };
@@ -27,6 +28,7 @@ app.listen(port, () => {
 app.use('/healthcheck', healthcheckRoutes);
 app.use('/books', bookRoutes);
 app.use('/user', userRoutes);
+app.use('/admin', adminRoutes);
 
 const poolConfig = {
     min: 3,
