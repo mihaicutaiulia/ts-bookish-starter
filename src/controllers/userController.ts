@@ -50,7 +50,7 @@ class UserController {
                     return;
                 }
                 try {
-                    const userId = req.body.userId;
+                    const userId = req.body.user_id;
                     const titles: string[] = req.body.titles; // array of book titles
 
                     const bookIds: number[] = [];
