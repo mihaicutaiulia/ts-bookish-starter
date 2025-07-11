@@ -3,6 +3,7 @@ import { pool } from '../app';
 import { Request as TediousRequest, TYPES, Connection } from 'tedious';
 import { Book } from '../entity/book';
 import { BorrowedBook } from '../entity/borrowedBook';
+import { updateInventoryTable } from '../middleware/inventory';
 
 class UserController {
     router: Router;
@@ -16,18 +17,8 @@ class UserController {
                     return;
                 }
                 try {
-                    const userId = req.body.userId;
+                    const userId = req.body.user_id;
                     const titles: string[] = req.body.titles; // array of book titles
-                    // const bookIds = await Promise.all(
-                    //     titles.map((title) =>
-                    //         this.getBookIdByTitle(title, connection),
-                    //     ),
-                    // );
-                    // await Promise.all(
-                    //     bookIds.map((bookId) =>
-                    //         this.borrowBook(bookId, userId, connection),
-                    //     ),
-                    // );
 
                     const bookIds: number[] = [];
                     for (const title of titles) {
@@ -61,17 +52,6 @@ class UserController {
                 try {
                     const userId = req.body.userId;
                     const titles: string[] = req.body.titles; // array of book titles
-                    // const bookIds = await Promise.all(
-                    //     titles.map((title) =>
-                    //         this.getBookIdByTitle(title, connection),
-                    //     ),
-                    // );
-                    //
-                    // await Promise.all(
-                    //     bookIds.map((bookId) =>
-                    //         this.returnBook(bookId, userId, connection),
-                    //     ),
-                    // );
 
                     const bookIds: number[] = [];
                     for (const title of titles) {
@@ -144,7 +124,7 @@ class UserController {
         });
     }
 
-    borrowBook(
+    async borrowBook(
         bookId: number,
         userId: number,
         connection: Connection,
@@ -156,20 +136,22 @@ class UserController {
             due_date.setDate(due_date.getDate() + 10);
 
             const query = `INSERT INTO BorrowedBooks (book_id, user_id, borrowed_at, due_date)
-                                                OUTPUT INSERTED.id
-                                                VALUES (@bookId, @userId, @borrowed_at, @due_date) `;
-            const request = new TediousRequest(query, (err) => {
+                                            OUTPUT INSERTED.id
+                                            VALUES (@bookId, @userId, @borrowed_at, @due_date) `;
+            const request = new TediousRequest(query, async (err) => {
                 if (err) return reject(err);
+                try {
+                    await updateInventoryTable(bookId, -1, connection);
+                    resolve();
+                } catch (updateErr) {
+                    reject(updateErr);
+                }
             });
 
             request.addParameter('bookId', TYPES.Int, bookId);
             request.addParameter('userId', TYPES.Int, userId);
             request.addParameter('borrowed_at', TYPES.DateTime, borrowed_at);
             request.addParameter('due_date', TYPES.DateTime, due_date);
-
-            request.on('row', (columns) => {
-                resolve(columns[0].value);
-            });
 
             connection.execSql(request);
         });
@@ -218,23 +200,26 @@ class UserController {
         });
     }
 
-    returnBook(
+    async returnBook(
         bookId: number,
         userId: number,
         connection: Connection,
     ): Promise<void> {
-        return new Promise((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
             const query = `DELETE FROM BorrowedBooks
-                                                WHERE book_id = @bookId AND user_id = @userId`;
-            const request = new TediousRequest(query, (err) => {
+                           WHERE book_id = @bookId AND user_id = @userId`;
+            const request = new TediousRequest(query, async (err) => {
                 if (err) return reject(err);
+                try {
+                    await updateInventoryTable(bookId, +1, connection);
+                    resolve();
+                } catch (updateErr) {
+                    reject(updateErr);
+                }
             });
 
             request.addParameter('bookId', TYPES.Int, bookId);
             request.addParameter('userId', TYPES.Int, userId);
-
-            request.on('requestCompleted', () => resolve());
-            request.on('error', (err) => reject(err));
 
             connection.execSql(request);
         });
