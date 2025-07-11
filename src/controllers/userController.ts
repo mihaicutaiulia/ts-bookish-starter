@@ -9,22 +9,40 @@ class UserController {
 
     constructor() {
         this.router = Router();
-        this.router.post('/borrowBook', (req, res) => {
+        this.router.post('/borrowBooks', (req, res) => {
             pool.acquire(async (err, connection) => {
                 if (err) {
                     res.status(500).json({ error: err.message });
                     return;
                 }
                 try {
-                    const bookId = await this.getBookIdByTitle(
-                        req.body.title,
-                        connection,
-                    );
                     const userId = req.body.userId;
-                    await this.borrowBook(bookId, userId, connection);
+                    const titles: string[] = req.body.titles; // array of book titles
+                    // const bookIds = await Promise.all(
+                    //     titles.map((title) =>
+                    //         this.getBookIdByTitle(title, connection),
+                    //     ),
+                    // );
+                    // await Promise.all(
+                    //     bookIds.map((bookId) =>
+                    //         this.borrowBook(bookId, userId, connection),
+                    //     ),
+                    // );
+
+                    const bookIds: number[] = [];
+                    for (const title of titles) {
+                        const bookId = await this.getBookIdByTitle(
+                            title,
+                            connection,
+                        );
+                        bookIds.push(bookId);
+                    }
+                    for (const bookId of bookIds) {
+                        await this.borrowBook(bookId, userId, connection);
+                    }
 
                     res.status(200).json({
-                        message: 'Book borrowed successfully',
+                        message: 'Books borrowed successfully',
                     });
                 } catch (err: any) {
                     res.status(500).json({ error: err.message });
@@ -34,22 +52,41 @@ class UserController {
             });
         });
 
-        this.router.post('/returnBook', (req, res) => {
+        this.router.post('/returnBooks', (req, res) => {
             pool.acquire(async (err, connection) => {
                 if (err) {
                     res.status(500).json({ error: err.message });
                     return;
                 }
                 try {
-                    const bookId = await this.getBookIdByTitle(
-                        req.body.title,
-                        connection,
-                    );
                     const userId = req.body.userId;
-                    await this.returnBook(bookId, userId, connection);
+                    const titles: string[] = req.body.titles; // array of book titles
+                    // const bookIds = await Promise.all(
+                    //     titles.map((title) =>
+                    //         this.getBookIdByTitle(title, connection),
+                    //     ),
+                    // );
+                    //
+                    // await Promise.all(
+                    //     bookIds.map((bookId) =>
+                    //         this.returnBook(bookId, userId, connection),
+                    //     ),
+                    // );
+
+                    const bookIds: number[] = [];
+                    for (const title of titles) {
+                        const bookId = await this.getBookIdByTitle(
+                            title,
+                            connection,
+                        );
+                        bookIds.push(bookId);
+                    }
+                    for (const bookId of bookIds) {
+                        await this.returnBook(bookId, userId, connection);
+                    }
 
                     res.status(200).json({
-                        message: 'Book returned successfully',
+                        message: 'Books returned successfully',
                     });
                 } catch (err: any) {
                     res.status(500).json({ error: err.message });
