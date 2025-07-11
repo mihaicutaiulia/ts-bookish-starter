@@ -16,7 +16,10 @@ class UserController {
                     return;
                 }
                 try {
-                    const bookId = await this.getBookIdByTitle(req.body.title, connection);
+                    const bookId = await this.getBookIdByTitle(
+                        req.body.title,
+                        connection,
+                    );
                     const userId = req.body.userId;
                     await this.borrowBook(bookId, userId, connection);
 
@@ -30,6 +33,32 @@ class UserController {
                 }
             });
         });
+
+        this.router.post('/returnBook', (req, res) => {
+            pool.acquire(async (err, connection) => {
+                if (err) {
+                    res.status(500).json({ error: err.message });
+                    return;
+                }
+                try {
+                    const bookId = await this.getBookIdByTitle(
+                        req.body.title,
+                        connection,
+                    );
+                    const userId = req.body.userId;
+                    await this.returnBook(bookId, userId, connection);
+
+                    res.status(200).json({
+                        message: 'Book returned successfully',
+                    });
+                } catch (err: any) {
+                    res.status(500).json({ error: err.message });
+                } finally {
+                    connection.release();
+                }
+            });
+        });
+
         this.router.get('/myBooks/:id', (req, res) => {
             pool.acquire(async (err, connection) => {
                 if (err) {
@@ -146,6 +175,28 @@ class UserController {
             });
 
             request.on('requestCompleted', () => resolve(books));
+            request.on('error', (err) => reject(err));
+
+            connection.execSql(request);
+        });
+    }
+
+    returnBook(
+        bookId: number,
+        userId: number,
+        connection: Connection,
+    ): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const query = `DELETE FROM BorrowedBooks
+                                                WHERE book_id = @bookId AND user_id = @userId`;
+            const request = new TediousRequest(query, (err) => {
+                if (err) return reject(err);
+            });
+
+            request.addParameter('bookId', TYPES.Int, bookId);
+            request.addParameter('userId', TYPES.Int, userId);
+
+            request.on('requestCompleted', () => resolve());
             request.on('error', (err) => reject(err));
 
             connection.execSql(request);
