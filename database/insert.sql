@@ -18,3 +18,11 @@ VALUES (1, 1),  -- The Great Gatsby by F. Scott Fitzgerald
 SELECT * FROM Books;
 SELECT * FROM Authors;
 SELECT * FROM BooksAuthors;
+
+INSERT INTO Users(first_name, last_name, email, pass_hash)
+VALUES ('John', 'Doe', 'john@doe.com', 'hashed_password_1'),
+       ('Jane', 'Smith', 'jane@smith.com', 'hashed_password_2'),
+       ('Alice', 'Johnson', 'alice@johnson.com', 'hashed_password_3');
+
+
+SELECT * FROM Users;

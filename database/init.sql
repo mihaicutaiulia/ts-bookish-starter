@@ -51,3 +51,9 @@ CREATE TABLE BorrowedBooks (
     FOREIGN KEY (book_id) REFERENCES Books(id),
     FOREIGN KEY (user_id) REFERENCES Users(id)
 );
+
+CREATE TABLE Inventory (
+    book_id INT PRIMARY KEY,
+    available_copies INT NOT NULL CHECK (available_copies >= 0),
+    FOREIGN KEY (book_id) REFERENCES Books(id)
+);
